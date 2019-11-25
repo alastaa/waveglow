@@ -1,18 +1,20 @@
 {
     "train_config": {
-        "fp16_run": true,
+        "fp16_run": false,
         "output_directory": "checkpoints",
         "epochs": 100000,
         "learning_rate": 1e-4,
         "sigma": 1.0,
         "iters_per_checkpoint": 2000,
-        "batch_size": 12,
+        "iters_per_validation": 500,
+        "batch_size": 6,
         "seed": 1234,
-        "checkpoint_path": "",
-        "with_tensorboard": false
+        "checkpoint_path": "checkpoints/waveglow_36000",
+        "with_tensorboard": true
     },
     "data_config": {
-        "training_files": "train_files.txt",
+        "training_files": "../data/waveglowisot_persot_train_filelist.txt",
+        "validation_files": "../data/waveglowisot_persot_val_filelist.txt",
         "segment_length": 16000,
         "sampling_rate": 22050,
         "filter_length": 1024,

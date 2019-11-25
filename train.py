@@ -59,9 +59,34 @@ def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
                 'optimizer': optimizer.state_dict(),
                 'learning_rate': learning_rate}, filepath)
 
+def validate(model, criterion, valset, iteration, batch_size, logger):
+    """Handles all the validation scoring and printing"""
+    model.eval()
+    with torch.no_grad():
+        val_loader = DataLoader(valset, num_workers=1,
+                                shuffle=False, batch_size=batch_size,
+                                pin_memory=False)
+
+        val_loss = 0.0
+        for i, batch in enumerate(val_loader):
+            mel, audio = batch
+            mel = torch.autograd.Variable(mel.cuda())
+            audio = torch.autograd.Variable(audio.cuda())
+            outputs = model((mel, audio))
+            loss = criterion(outputs)
+
+            reduced_loss = loss.item()
+            val_loss += reduced_loss
+        val_loss = val_loss / (i + 1)
+
+
+    model.train()
+    print("Validation loss {}: {:9f}  ".format(iteration, val_loss))
+    logger.add_scalar('validation_loss', val_loss, iteration)
+
 def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
-          sigma, iters_per_checkpoint, batch_size, seed, fp16_run,
-          checkpoint_path, with_tensorboard):
+          sigma, iters_per_checkpoint, iters_per_validation, batch_size, seed,
+          fp16_run, checkpoint_path, with_tensorboard):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     #=====START: ADDED FOR DISTRIBUTED======
@@ -91,6 +116,7 @@ def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
         iteration += 1  # next iteration is iteration + 1
 
     trainset = Mel2Samp(**data_config)
+    valset = Mel2Samp(**data_config, val=True)
     # =====START: ADDED FOR DISTRIBUTED======
     train_sampler = DistributedSampler(trainset) if num_gpus > 1 else None
     # =====END:   ADDED FOR DISTRIBUTED======
@@ -141,6 +167,11 @@ def train(num_gpus, rank, group_name, output_directory, epochs, learning_rate,
             print("{}:\t{:.9f}".format(iteration, reduced_loss))
             if with_tensorboard and rank == 0:
                 logger.add_scalar('training_loss', reduced_loss, i + len(train_loader) * epoch)
+            if with_tensorboard and iteration%iters_per_validation==0:
+                logger.add_audio('real_audio', audio[0,:].cpu().detach().numpy(), iteration, sample_rate=22050)
+                generated_audio = model.infer(mel[0].unsqueeze(0))
+                logger.add_audio('generated_audio', generated_audio.cpu().detach().numpy(), iteration, sample_rate=22050)
+                validate(model, criterion, valset, iteration, batch_size, logger)
 
             if (iteration % iters_per_checkpoint == 0):
                 if rank == 0:
