@@ -248,7 +248,7 @@ class WaveGlow(torch.nn.Module):
         output_audio.append(audio)
         return torch.cat(output_audio,1), log_s_list, log_det_W_list
 
-    def infer(self, spect, sigma=1.0):
+    def infer(self, spect, sigma=1.0, use_cpu=False):
         spect = self.upsample(spect)
         # trim conv artifacts. maybe pad spec to kernel multiple
         time_cutoff = self.upsample.kernel_size[0] - self.upsample.stride[0]
@@ -258,13 +258,23 @@ class WaveGlow(torch.nn.Module):
         spect = spect.contiguous().view(spect.size(0), spect.size(1), -1).permute(0, 2, 1)
 
         if spect.type() == 'torch.cuda.HalfTensor':
-            audio = torch.cuda.HalfTensor(spect.size(0),
-                                          self.n_remaining_channels,
-                                          spect.size(2)).normal_()
+            if use_cpu:
+                audio = torch.HalfTensor(spect.size(0),
+                                              self.n_remaining_channels,
+                                              spect.size(2)).normal_()
+            else:
+                audio = torch.cuda.HalfTensor(spect.size(0),
+                                              self.n_remaining_channels,
+                                              spect.size(2)).normal_()
         else:
-            audio = torch.cuda.FloatTensor(spect.size(0),
-                                           self.n_remaining_channels,
-                                           spect.size(2)).normal_()
+            if use_cpu:
+                audio = torch.FloatTensor(spect.size(0),
+                                               self.n_remaining_channels,
+                                               spect.size(2)).normal_()
+            else:
+                audio = torch.cuda.FloatTensor(spect.size(0),
+                                               self.n_remaining_channels,
+                                               spect.size(2)).normal_()
 
         audio = torch.autograd.Variable(sigma*audio)
 
@@ -284,9 +294,15 @@ class WaveGlow(torch.nn.Module):
 
             if k % self.n_early_every == 0 and k > 0:
                 if spect.type() == 'torch.cuda.HalfTensor':
-                    z = torch.cuda.HalfTensor(spect.size(0), self.n_early_size, spect.size(2)).normal_()
+                    if use_cpu:
+                        z = torch.HalfTensor(spect.size(0), self.n_early_size, spect.size(2)).normal_()
+                    else:
+                        z = torch.cuda.HalfTensor(spect.size(0), self.n_early_size, spect.size(2)).normal_()
                 else:
-                    z = torch.cuda.FloatTensor(spect.size(0), self.n_early_size, spect.size(2)).normal_()
+                    if use_cpu:
+                        z = torch.FloatTensor(spect.size(0), self.n_early_size, spect.size(2)).normal_()
+                    else:
+                        z = torch.cuda.FloatTensor(spect.size(0), self.n_early_size, spect.size(2)).normal_()
                 audio = torch.cat((sigma*z, audio),1)
 
         audio = audio.permute(0,2,1).contiguous().view(audio.size(0), -1).data
